@@ -1,18 +1,20 @@
-specVersion: 0.0.1
+specVersion: 0.0.2
 schema:
   file: ./schema.graphql
 dataSources:
   - kind: ethereum/contract
     name: ViralataFinance
-    network: mainnet
+    network: bsc
     source:
       address: "0x4c79b8c9cB0BD62B047880603a9DEcf36dE28344"
       abi: ViralataFinance
     mapping:
       kind: ethereum/events
-      apiVersion: 0.0.2
+      apiVersion: 0.0.4
       language: wasm/assemblyscript
       entities:
+        - Token
+        - Holder
         - Approval
         - MinTokensBeforeSwapUpdated
         - OwnershipTransferred
@@ -20,8 +22,10 @@ dataSources:
         - SwapAndLiquifyEnabledUpdated
         - Transfer
       abis:
+        - name: ERC20
+          file: ./abis/ERC20.json
         - name: ViralataFinance
-          file: ./abis/ViralataFinance .json
+          file: ./abis/ViralataFinance.json
       eventHandlers:
         - event: Approval(indexed address,indexed address,uint256)
           handler: handleApproval

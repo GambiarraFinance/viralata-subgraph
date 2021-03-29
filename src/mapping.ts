@@ -1,38 +1,47 @@
-import { BigInt } from "@graphprotocol/graph-ts"
+import { BigInt, Address, store, log } from "@graphprotocol/graph-ts";
+import {
+  Transfer as TransferEvent,
+  ERC20,
+} from "../generated/ViralataFinance/ERC20";
 import {
   ViralataFinance,
   Approval,
   MinTokensBeforeSwapUpdated,
   OwnershipTransferred,
-  SwapAndLiquify,
+  SwapAndLiquify as SwapAndLiquifyEvent,
   SwapAndLiquifyEnabledUpdated,
   Transfer
-} from "../generated/ViralataFinance /ViralataFinance "
-import { ExampleEntity } from "../generated/schema"
+} from "../generated/ViralataFinance/ViralataFinance"
+import {
+  ReauApproval,
+  SwapAndLiquify,
+  Token,
+  Holder,
+} from "../generated/schema";
 
 export function handleApproval(event: Approval): void {
   // Entities can be loaded from the store using a string ID; this ID
   // needs to be unique across all entities of the same type
-  let entity = ExampleEntity.load(event.transaction.from.toHex())
+  let Reau = ReauApproval.load(event.transaction.from.toHex());
 
   // Entities only exist after they have been saved to the store;
   // `null` checks allow to create entities on demand
-  if (entity == null) {
-    entity = new ExampleEntity(event.transaction.from.toHex())
+  if (Reau == null) {
+    Reau = new ReauApproval(event.transaction.from.toHex());
 
     // Entity fields can be set using simple assignments
-    entity.count = BigInt.fromI32(0)
+    Reau.count = BigInt.fromI32(0);
   }
 
   // BigInt and BigDecimal math are supported
-  entity.count = entity.count + BigInt.fromI32(1)
+  Reau.count = Reau.count + BigInt.fromI32(1)
 
-  // Entity fields can be set based on event parameters
-  entity.owner = event.params.owner
-  entity.spender = event.params.spender
+  // Reau fields can be set based on event parameters
+  Reau.owner = event.params.owner
+  Reau.spender = event.params.spender
 
   // Entities can be written to the store with `.save()`
-  entity.save()
+  Reau.save()
 
   // Note: If a handler doesn't require existing field values, it is faster
   // _not_ to load the entity from the store. Instead, create it fresh with
@@ -81,10 +90,64 @@ export function handleMinTokensBeforeSwapUpdated(
 
 export function handleOwnershipTransferred(event: OwnershipTransferred): void {}
 
-export function handleSwapAndLiquify(event: SwapAndLiquify): void {}
+export function handleSwapAndLiquify(event: SwapAndLiquifyEvent): void {
+  let reau = new SwapAndLiquify(
+    event.transaction.hash.toHex() + "-" + event.logIndex.toString()
+  )
+
+  reau.tokensIntoLiqudity = event.params.tokensIntoLiqudity;
+  reau.ethReceived = event.params.ethReceived;
+  reau.tokensSwapped = event.params.tokensSwapped;
+  reau.save()
+
+}
 
 export function handleSwapAndLiquifyEnabledUpdated(
   event: SwapAndLiquifyEnabledUpdated
 ): void {}
 
-export function handleTransfer(event: Transfer): void {}
+function updateBalance(
+  tokenAddress: Address,
+  holderAddress: Address,
+  value: BigInt,
+  increase: boolean
+): void {
+  if (
+    holderAddress.toHexString() == "0x0000000000000000000000000000000000000000"
+  )
+    return;
+  let id = tokenAddress.toHex() + "-" + holderAddress.toHex();
+  let holder = Holder.load(id);
+  if (holder == null) {
+    holder = new Holder(id);
+    holder.address = holderAddress;
+    holder.balance = BigInt.fromI32(0);
+    holder.token = tokenAddress.toHex();
+  }
+  holder.balance = increase
+    ? holder.balance.plus(value)
+    : holder.balance.minus(value);
+  if (holder.balance.isZero()) {
+    store.remove("Holder", id);
+  } else {
+    holder.save();
+  }
+}
+
+function updateTotalSupply(address: Address): void {
+  let contract = ERC20.bind(address);
+  let token = Token.load(address.toHex());
+  if (token == null) {
+    token = new Token(address.toHex());
+    token.address = address;
+    token.totalSupply = BigInt.fromI32(0);
+  }
+  token.totalSupply = contract.totalSupply();
+  token.save();
+}
+
+export function handleTransfer(event: TransferEvent): void {
+  updateTotalSupply(event.address);
+  updateBalance(event.address, event.params.from, event.params.value, false);
+  updateBalance(event.address, event.params.to, event.params.value, true);
+}
